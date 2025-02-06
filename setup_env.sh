@@ -31,7 +31,3 @@ EOF
 echo ".env file created successfully."
 
 echo "To edit, edit the .env file or run this again."
-
-
-docker-compose down --volumes --remove-orphans
-docker-compose up -d --build
