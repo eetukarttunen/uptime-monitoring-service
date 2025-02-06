@@ -10,6 +10,7 @@ I personally use this service to monitor my own websites and experiments. 😊
 - **PostgreSQL** for storing monitoring results.
 - **Grafana** for visualizing the data.
 - **Docker** to run everything in isolated containers.
+- **Shell Script** to help with creating .env file.
 
 ## Requirements
 
