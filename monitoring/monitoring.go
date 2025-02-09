@@ -11,7 +11,7 @@ import (
 	_ "github.com/lib/pq"
 )
 
-// Dockerized postgresql connection
+// Connection to the dockerized postgresql database
 func ConnectDB() (*sql.DB, error) {
 	connStr := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
@@ -24,7 +24,7 @@ func ConnectDB() (*sql.DB, error) {
 	return sql.Open("postgres", connStr)
 }
 
-// Creating table if doesn't exist yet
+// Creating a table if one doesn't exist yet
 func CreateTableIfNotExists(db *sql.DB) error {
 	query := `
 	CREATE TABLE IF NOT EXISTS uptime_logs (
@@ -43,7 +43,7 @@ func CreateTableIfNotExists(db *sql.DB) error {
 	return nil
 }
 
-// Checking status and saving it to database
+// Checking status and saving the status to database
 func CheckWebsite(url string, db *sql.DB) {
 	start := time.Now()
 	resp, err := http.Get(url)
