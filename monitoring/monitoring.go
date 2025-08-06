@@ -95,3 +95,4 @@ func StartMonitoring(db *sql.DB, urls []string, interval time.Duration) {
 		time.Sleep(interval)
 	}
 }
+
