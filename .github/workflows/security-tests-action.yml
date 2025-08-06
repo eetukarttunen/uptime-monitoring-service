@@ -19,8 +19,8 @@ jobs:
         with:
           go-version: '1.20'
 
-      - name: Run GoSec security scan
-        uses: securego/gosec-action@v2
+      - name: GoSec security scanning
+        uses: securego/gosec@v2.22.7
         with:
           args: ./...
 
