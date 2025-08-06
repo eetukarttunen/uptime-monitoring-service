@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"time"
 
@@ -44,47 +43,27 @@ func CreateTableIfNotExists(db *sql.DB) error {
 	return nil
 }
 
-// ValidateURL ensures the URL is well-formed and uses HTTP or HTTPS
-func ValidateURL(rawURL string) (string, error) {
-	parsed, err := url.ParseRequestURI(rawURL)
-	if err != nil {
-		return "", fmt.Errorf("invalid URL: %w", err)
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return "", fmt.Errorf("unsupported URL scheme: %s", parsed.Scheme)
-	}
-	return rawURL, nil
-}
-
 // Checking status and saving the status to database
-func CheckWebsite(rawURL string, db *sql.DB) {
-	validatedURL, err := ValidateURL(rawURL)
-	if err != nil {
-		log.Printf("Invalid URL '%s': %v", rawURL, err)
-		return
-	}
-
+func CheckWebsite(url string, db *sql.DB) {
 	start := time.Now()
-	resp, err := http.Get(validatedURL) // G107 resolved via validation
-	var statusCode int
+	resp, err := http.Get(url)
 
+	var statusCode int
 	if err != nil {
 		statusCode = 0
 	} else {
 		statusCode = resp.StatusCode
-		if cerr := resp.Body.Close(); cerr != nil { // G104 fix: handle close error
-			log.Printf("Failed to close response body: %v", cerr)
-		}
+		resp.Body.Close()
 	}
 
 	responseTime := time.Since(start).Milliseconds()
 
-	_, err = db.Exec("INSERT INTO uptime_logs (url, status_code, response_time_ms) VALUES ($1, $2, $3)", validatedURL, statusCode, responseTime)
+	_, err = db.Exec("INSERT INTO uptime_logs (url, status_code, response_time_ms) VALUES ($1, $2, $3)", url, statusCode, responseTime)
 	if err != nil {
-		log.Printf("DB Error: %v", err)
+		fmt.Println("DB Error:", err)
 	}
 
-	fmt.Printf("Checked %s - Status: %d, Response Time: %dms\n", validatedURL, statusCode, responseTime)
+	fmt.Printf("Checked %s - Status: %d, Response Time: %dms\n", url, statusCode, responseTime)
 }
 
 func StartMonitoring(db *sql.DB, urls []string, interval time.Duration) {
@@ -95,4 +74,3 @@ func StartMonitoring(db *sql.DB, urls []string, interval time.Duration) {
 		time.Sleep(interval)
 	}
 }
-
