@@ -5,18 +5,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"time"
 
 	_ "github.com/lib/pq"
 )
 
-var allowedHosts = map[string]bool{
-	"example.com":        true,
-	"status.example.org": true,
-}
-
+// Connection to the dockerized postgresql database
 func ConnectDB() (*sql.DB, error) {
 	connStr := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
@@ -29,6 +24,7 @@ func ConnectDB() (*sql.DB, error) {
 	return sql.Open("postgres", connStr)
 }
 
+// Creating a table if one doesn't exist yet
 func CreateTableIfNotExists(db *sql.DB) error {
 	query := `
 	CREATE TABLE IF NOT EXISTS uptime_logs (
@@ -47,51 +43,33 @@ func CreateTableIfNotExists(db *sql.DB) error {
 	return nil
 }
 
-func isValidURL(input string) bool {
-	parsed, err := url.ParseRequestURI(input)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return false
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return false
-	}
-	return allowedHosts[parsed.Host]
-}
-
-func CheckWebsite(rawURL string, db *sql.DB) {
-	if !isValidURL(rawURL) {
-		log.Printf("Skipped invalid or unauthorized URL: %s", rawURL)
-		return
-	}
-
+// Checking status and saving the status to database
+func CheckWebsite(url string, db *sql.DB) {
 	start := time.Now()
-	resp, err := http.Get(rawURL)
+	resp, err := http.Get(url)
 
 	var statusCode int
 	if err != nil {
 		statusCode = 0
 	} else {
 		statusCode = resp.StatusCode
-		if cerr := resp.Body.Close(); cerr != nil {
-			log.Printf("Error closing response body for %s: %v", rawURL, cerr)
-		}
+		resp.Body.Close()
 	}
 
 	responseTime := time.Since(start).Milliseconds()
 
-	_, err = db.Exec(`INSERT INTO uptime_logs (url, status_code, response_time_ms) VALUES ($1, $2, $3)`,
-		rawURL, statusCode, responseTime)
+	_, err = db.Exec("INSERT INTO uptime_logs (url, status_code, response_time_ms) VALUES ($1, $2, $3)", url, statusCode, responseTime)
 	if err != nil {
-		log.Printf("DB insert error: %v", err)
+		fmt.Println("DB Error:", err)
 	}
 
-	log.Printf("Checked %s - Status: %d, Response Time: %dms", rawURL, statusCode, responseTime)
+	fmt.Printf("Checked %s - Status: %d, Response Time: %dms\n", url, statusCode, responseTime)
 }
 
 func StartMonitoring(db *sql.DB, urls []string, interval time.Duration) {
 	for {
-		for _, u := range urls {
-			go CheckWebsite(u, db)
+		for _, url := range urls {
+			go CheckWebsite(url, db)
 		}
 		time.Sleep(interval)
 	}
