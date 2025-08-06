@@ -5,13 +5,20 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
 	_ "github.com/lib/pq"
 )
 
-// Connection to the dockerized postgresql database
+// Whitelisted hostnames
+var allowedHosts = map[string]bool{
+	"example.com":        true,
+	"status.example.org": true,
+}
+
+// Connection to the dockerized PostgreSQL database
 func ConnectDB() (*sql.DB, error) {
 	connStr := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
@@ -24,7 +31,7 @@ func ConnectDB() (*sql.DB, error) {
 	return sql.Open("postgres", connStr)
 }
 
-// Creating a table if one doesn't exist yet
+// CreateTableIfNotExists ensures the logs table exists
 func CreateTableIfNotExists(db *sql.DB) error {
 	query := `
 	CREATE TABLE IF NOT EXISTS uptime_logs (
@@ -43,33 +50,56 @@ func CreateTableIfNotExists(db *sql.DB) error {
 	return nil
 }
 
-// Checking status and saving the status to database
-func CheckWebsite(url string, db *sql.DB) {
+// isValidURL checks scheme and host against whitelist
+func isValidURL(input string) bool {
+	parsed, err := url.ParseRequestURI(input)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return false
+	}
+	// Enforce https/http only
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return false
+	}
+	// Check if host is allowed
+	return allowedHosts[parsed.Host]
+}
+
+// CheckWebsite checks status and logs it to the database
+func CheckWebsite(rawURL string, db *sql.DB) {
+	if !isValidURL(rawURL) {
+		log.Printf("Skipped invalid or unauthorized URL: %s", rawURL)
+		return
+	}
+
 	start := time.Now()
-	resp, err := http.Get(url)
+	resp, err := http.Get(rawURL) // G107 safe — input validated
 
 	var statusCode int
 	if err != nil {
 		statusCode = 0
 	} else {
 		statusCode = resp.StatusCode
-		resp.Body.Close()
+		if cerr := resp.Body.Close(); cerr != nil { // G104: handle Close error
+			log.Printf("Error closing response body for %s: %v", rawURL, cerr)
+		}
 	}
 
 	responseTime := time.Since(start).Milliseconds()
 
-	_, err = db.Exec("INSERT INTO uptime_logs (url, status_code, response_time_ms) VALUES ($1, $2, $3)", url, statusCode, responseTime)
+	_, err = db.Exec(`INSERT INTO uptime_logs (url, status_code, response_time_ms) VALUES ($1, $2, $3)`,
+		rawURL, statusCode, responseTime)
 	if err != nil {
-		fmt.Println("DB Error:", err)
+		log.Printf("DB insert error: %v", err)
 	}
 
-	fmt.Printf("Checked %s - Status: %d, Response Time: %dms\n", url, statusCode, responseTime)
+	log.Printf("Checked %s - Status: %d, Response Time: %dms", rawURL, statusCode, responseTime)
 }
 
+// StartMonitoring begins polling the list of URLs
 func StartMonitoring(db *sql.DB, urls []string, interval time.Duration) {
 	for {
-		for _, url := range urls {
-			go CheckWebsite(url, db)
+		for _, u := range urls {
+			go CheckWebsite(u, db)
 		}
 		time.Sleep(interval)
 	}
