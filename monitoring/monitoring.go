@@ -12,13 +12,11 @@ import (
 	_ "github.com/lib/pq"
 )
 
-// Whitelisted hostnames
 var allowedHosts = map[string]bool{
 	"example.com":        true,
 	"status.example.org": true,
 }
 
-// Connection to the dockerized PostgreSQL database
 func ConnectDB() (*sql.DB, error) {
 	connStr := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
@@ -31,7 +29,6 @@ func ConnectDB() (*sql.DB, error) {
 	return sql.Open("postgres", connStr)
 }
 
-// CreateTableIfNotExists ensures the logs table exists
 func CreateTableIfNotExists(db *sql.DB) error {
 	query := `
 	CREATE TABLE IF NOT EXISTS uptime_logs (
@@ -50,21 +47,17 @@ func CreateTableIfNotExists(db *sql.DB) error {
 	return nil
 }
 
-// isValidURL checks scheme and host against whitelist
 func isValidURL(input string) bool {
 	parsed, err := url.ParseRequestURI(input)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return false
 	}
-	// Enforce https/http only
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return false
 	}
-	// Check if host is allowed
 	return allowedHosts[parsed.Host]
 }
 
-// CheckWebsite checks status and logs it to the database
 func CheckWebsite(rawURL string, db *sql.DB) {
 	if !isValidURL(rawURL) {
 		log.Printf("Skipped invalid or unauthorized URL: %s", rawURL)
@@ -72,14 +65,14 @@ func CheckWebsite(rawURL string, db *sql.DB) {
 	}
 
 	start := time.Now()
-	resp, err := http.Get(rawURL) // G107 safe — input validated
+	resp, err := http.Get(rawURL)
 
 	var statusCode int
 	if err != nil {
 		statusCode = 0
 	} else {
 		statusCode = resp.StatusCode
-		if cerr := resp.Body.Close(); cerr != nil { // G104: handle Close error
+		if cerr := resp.Body.Close(); cerr != nil {
 			log.Printf("Error closing response body for %s: %v", rawURL, cerr)
 		}
 	}
@@ -95,7 +88,6 @@ func CheckWebsite(rawURL string, db *sql.DB) {
 	log.Printf("Checked %s - Status: %d, Response Time: %dms", rawURL, statusCode, responseTime)
 }
 
-// StartMonitoring begins polling the list of URLs
 func StartMonitoring(db *sql.DB, urls []string, interval time.Duration) {
 	for {
 		for _, u := range urls {
